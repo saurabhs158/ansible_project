@@ -1,0 +1,29 @@
+---
+- name: Fetch User in Windows
+  hosts: red_test
+  gather_facts: no
+  ignore_errors: yes
+  ignore_unreachable: yes
+
+  tasks:
+
+    - name: Get current date time for log files
+      command: date "+%Y-%m-%d_%H:%M:%S"
+      register: date_time
+      delegate_to: localhost
+
+    - name: Run command to get users list
+      shell: cat /etc/group
+      register: user_output
+
+    - name: Task - Store patching output to log file
+      copy:
+        dest: "{{ date_time.stdout }}_user_audit_linux.json"
+        content: |
+          {% for host in groups.red_test %}
+          { 'ip': '{{ hostvars[host].ansible_host }}', 'server_name': '{{ host }}', 'os_distribution': '{{ hostvars[host].ansible_os }}', 'data' : {{hostvars[host].user_output}} }
+          {% endfor %}
+      delegate_to: localhost
+
+    - name: Create CSV report using log file
+      local_action: command python3 generete_user_audit_csv_linux.py "{{ date_time.stdout }}_user_audit_linux.json"
