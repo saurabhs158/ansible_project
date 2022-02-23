@@ -32,4 +32,4 @@
       delegate_to: localhost
 
     - name: Create CSV report using log file
-      local_action: command python3 generete_user_audit_csv.py "{{ date_time.stdout }}_user_audit.json"
+      local_action: command python3 generete_user_audit_csv_windows.py "{{ date_time.stdout }}_user_audit.json"
