@@ -26,7 +26,6 @@ for server in servers:
     #print(res)
     user_data = res["data"]["stdout_lines"]
     for users in user_data:
-        print(users)
         data = users
         data = data.split(":")
         del data[1:3]
@@ -39,10 +38,11 @@ for server in servers:
                   csv_row = [data[0], data[row_count]]
                   row.append(csv_row)
                   row_count += 1
-print(row)
+                
 date = datetime.datetime.now()
 filename = date.strftime("%m_%d_%Y_%H_%M_%S") + "_linux_user_audit.csv"
 fields = ['Group Name', 'User name']
+
 with open(filename, 'w') as csvfile:
 # creating a csv writer object
     csvwriter = csv.writer(csvfile)
