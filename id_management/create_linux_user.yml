@@ -1,0 +1,35 @@
+---
+- name: Create User in Linux
+  hosts: linux
+  gather_facts: yes
+  ignore_errors: yes
+  ignore_unreachable: yes
+  become: yes
+
+  vars_files: user_create_password.yml
+
+  vars:
+    user_json_file: "{{ ansible_date_time.date }}_{{ ansible_date_time.time }}_output_linux_user_create.json"
+
+  vars_prompt:
+    - name: group
+      prompt: Enter group for creating user
+      private: no
+
+  tasks:
+    - name: Task 1 - Create local user
+      user:
+        name: local_abc1
+        password: "{{ linux_password }}"
+        group: "{{ group }}"
+        state: present
+      register: user_output
+
+    - name: Task 2 - Store User creation output to log file
+      copy:
+        dest: "{{ user_json_file }}"
+        content: |
+          {% for host in groups.linux %}
+          { 'ip': '{{ ansible_host }}', 'server_name': '{{ host }}', 'os_distribution': '{{ ansible_os }}', 'data' : {{hostvars[host].user_output}} }
+          {% endfor %}
+      delegate_to: localhost
