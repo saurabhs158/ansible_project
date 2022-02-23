@@ -1,0 +1,99 @@
+---
+- name: Ansible Playbook for Patching on Redhat Servers
+  hosts: linux
+  become: yes
+  ignore_errors: true
+  ignore_unreachable: true
+  gather_facts: yes
+  serial: 4
+  vars: 
+    patch_json_file: "_output_linux_patch.json"
+  tasks:
+    - name: Get current date time for log files
+      command: date "+%Y-%m-%d_%H:%M:%S"
+      register: date_time
+      delegate_to: localhost
+    
+    - name: Get month
+      command: date "+%b"
+      register: date_month
+      delegate_to: localhost
+
+    - name: Get year
+      command: date "+%Y"
+      register: date_year
+      delegate_to: localhost
+
+    - name: Get update date
+      command: date "+%b"
+      register: update_date
+      delegate_to: localhost
+
+    - name:  Task 1 - verify web/database processes are not running
+      shell: systemctl list-unit-files | grep enabled | awk '{print $1}'
+      register: pre_service_check
+
+    - name: Task 2 - Alert if server is not reachable or failed to connect using SSH
+      local_action: command python3 /etc/ansible/alert_notification.py alert_connection {{ ansible_host }} {{ app_process_check.msg }}
+      when: "'unreachable' in app_process_check"
+
+    - name:  Task 4 - upgrade kernel package on Ubuntu server
+      command: yum -y update --security
+      register: yum_update
+    
+    - name: Task 5 - Get list of packages installed
+#      shell: rpm -qa --last | grep -e {{ date_year.stdout }} | grep -e {{ date_month.stdout}} | grep -e 'Tue 22'
+      shell: rpm -qa --last | grep -e '{{ update_date.stdout }}'
+      register: packages
+
+    - name: Task 6 - Store patching output to log file
+      copy:
+        dest: "{{ date_time.stdout }}{{ patch_json_file }}"
+        content: |
+          {% for host in groups.linux %}
+          { 'ip': '{{ hostvars[host].ansible_host }}', 'server_name': '{{ host }}', 'os_distribution': '{{ hostvars[host].ansible_os }}', 'data' : {{hostvars[host].packages}} }
+          {% endfor %}
+      delegate_to: localhost
+
+    - name: Task 7 - Check if a reboot is required after kernel update on Ubuntu servers
+      shell: KERNEL_NEW=$(rpm -q --last kernel |head -1 | awk '{print $1}' | sed 's/kernel-//'); KERNEL_NOW=$(uname -r); if [[ $KERNEL_NEW != $KERNEL_NOW ]]; then echo "reboot_needed"; else echo "reboot_not_needed"; fi
+      ignore_errors: true
+      register: reboot_required
+
+    - name: Task 8 - Reboot Ubuntu Servers if kernel updated
+      command: shutdown -r +1  "Rebooting CentOS/RedHat Servers After Kernel Patching"
+      async: 0
+      poll: 0
+      when: reboot_required.stdout == "reboot_needed"
+      register: reboot_started
+      ignore_errors: true
+
+    - name: Task 9 - pause for 180 secs
+      pause:
+        minutes: 3
+
+    - name: Task 10 - check if all the systems responding to ssh
+      local_action:
+        module: wait_for
+          host={{ ansible_host }}
+          port=22
+          search_regex=OpenSSH
+          delay=15
+          timeout=60
+          state=started
+
+    - name: Task 11 - Generate Linux patch CSV report
+      local_action: command python3 generate_linux_csv.py {{ patch_json_file }}
+
+    - name:  Task 12 - verify web/database processes are not running
+      shell: systemctl list-unit-files | grep enabled | awk '{print $1}'
+      ignore_errors: true
+      register: post_service_check
+    
+    - name: Task 13 - Post-Check - Verify if all services are running after reboot
+      debug:
+        msg: "{{ pre_service_check.stdout_lines|difference(post_service_check.stdout_lines) }}"
+      register: verify_services
+
+    - name: Task 14 - Alert if there is difference between services running before and after patching
+      local_action: command python3 alert_notification.py alert_servcies "{{ ansible_host }}" "{{ verify_services.msg }}"
