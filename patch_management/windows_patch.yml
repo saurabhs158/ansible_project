@@ -1,0 +1,163 @@
+---
+
+- name: Windows Patching
+  gather_facts: yes
+  ignore_errors: true
+  ignore_unreachable: true
+  hosts: win
+  vars:
+    temp_json_files:
+      - "_output_windows_patch_run_1.json"
+      - "_output_windows_patch_run_2.json"
+      - "_output_windows_patch_run_3.json"
+    patch_json_file: "_output_windows_patch.json"
+
+  tasks:
+    - name: Get current date time for log files
+      command: date "+%Y-%m-%d_%H:%M:%S"
+      register: date_time
+      delegate_to: localhost
+
+    - name: Task 1  - Pre-Check - Check Automatic running services before patching
+      win_shell: Get-Service | Where-Object {$_.StartType -eq "Automatic" -and $_.Status -eq "Running"} |  Format-Table -Property DisplayName
+      register: output
+    
+    - name: Task 2 - Alert if server is not reachable or failed to connect using WinRM
+      local_action: command python3 /etc/ansible/alert_notification.py alert_connection "{{ ansible_host }}" "{{ output.msg }}"
+      when: "'unreachable' in output"
+
+    - name: Task 3 - Pre Update Check
+      win_updates:
+        category_names:
+          - SecurityUpdates
+          - CriticalUpdates
+          - UpdateRollups
+          - Updates
+        state: searched
+        log_path: C:\Windows\Temp\Ansible-Pre-AllUpdatesFound.txt
+
+    - name: Task 4 - First update run
+      win_updates:
+        category_names:
+          - SecurityUpdates
+          - CriticalUpdates
+          - UpdateRollups
+          - Updates
+        state: installed
+        log_path: C:\Windows\Temp\ansible_updates_first_run.txt
+      register: first_run_result
+    
+    - name: Task 5 - Store output to log file after first update run
+      copy:
+        dest: "{{ date_time.stdout }}_output_windows_patch_run_1.json"
+        content: |
+          {% for host in groups.win %}
+          { 'ip': '{{ hostvars[host].ansible_host }}', 'server_name': '{{ host }}', 'patch_run': '1', 'os_distribution': '{{ hostvars[host].ansible_os }}', 'data' : {{hostvars[host].first_run_result}} }
+          {% endfor %}
+      delegate_to: localhost
+
+    - name: Task 6 - First update run reboot
+      win_reboot:
+        reboot_timeout: 3600
+      when: first_run_result.reboot_required
+
+    - name: Task 7 - Second update run
+      win_updates:
+        category_names:
+          - SecurityUpdates
+          - CriticalUpdates
+          - UpdateRollups
+          - Updates
+        state: installed
+        log_path: C:\Windows\Temp\ansible_updates_second_run.txt
+      register: second_run_result
+    
+    - name: Task 8 - Store output to log file after second update run
+      copy:
+        dest: "{{ date_time.stdout }}_output_windows_patch_run_2.json"
+        content: |
+          {% for host in groups.win %}
+          { 'ip': '{{ hostvars[host].ansible_host }}', 'server_name': '{{ host }}', 'patch_run': '2', 'os_distribution': '{{ hostvars[host].ansible_os }}', 'data' : {{hostvars[host].second_run_result}} }
+          {% endfor %}
+      delegate_to: localhost
+
+    - name: Task 9 - Second update run reboot
+      win_reboot:
+        reboot_timeout: 3600
+      when: second_run_result.reboot_required
+
+    - name: Task 10 - Third update run
+      win_updates:
+        category_names:
+          - SecurityUpdates
+          - CriticalUpdates
+          - UpdateRollups
+          - Updates
+        state: installed
+        log_path: C:\Windows\Temp\ansible_updates_third_run.txt
+      register: third_run_result
+
+    - name: Task 11 - Reboot Windows machine
+      win_reboot:
+        reboot_timeout_sec: 300
+      when: third_run_result.reboot_required
+
+    - name: Task 12 - store output to log file after third update run
+      copy:
+        dest: "{{ date_time.stdout }}_output_windows_patch_run_3.json"
+        content: |
+          {% for host in groups.win %}
+          { 'ip': '{{ hostvars[host].ansible_host }}', 'server_name': '{{ host }}', 'patch_run': '3', 'os_distribution': '{{ hostvars[host].ansible_os }}', 'data' : {{hostvars[host].third_run_result}} }
+          {% endfor %}
+      delegate_to: localhost
+
+    - name: Get log file names
+      command: echo "{{ date_time.stdout }}{{ temp_json_files[0] }} {{ date_time.stdout }}{{ temp_json_files[1] }} {{ date_time.stdout }}{{ temp_json_files[2] }}"
+      register: files
+
+    - name: Task 13 - Store 3 patch run output to one variable
+      command: "awk 1 {{ files.stdout_lines | join(' ') }}"
+      register: file_contents
+      delegate_to: localhost
+
+    - name: Task 14 - Store 3 patch run output to one file
+      copy:
+        dest: "{{ date_time.stdout }}{{ patch_json_file }}"
+        content:  "{{ file_contents.stdout_lines | unique |join('\n') }}"
+      delegate_to: localhost
+
+    - name: Task 15 - Pause for 5 minutes after reboot to auto restart services
+      pause:
+        minutes: 5
+
+    - name: Task 16 - Post-Check - Check running services after reboot
+      win_shell: Get-Service | Where-Object {$_.StartType -eq "Automatic" -and $_.Status -eq "Running"} |  Format-Table -Property DisplayName
+      register: output_new
+    
+    - name: Task 17 - Post Update Check
+      win_updates:
+        category_names:
+          - SecurityUpdates
+          - CriticalUpdates
+          - UpdateRollups
+          - Updates
+        state: searched
+        log_path: C:\Windows\Temp\Ansible-Post-AllUpdatesFound.txt
+
+    - name: Task 18 - Post-Check - Verify if all services are running after reboot
+      debug:
+        msg: "{{ output.stdout_lines|difference(output_new.stdout_lines) }}"
+      register: verify_services
+
+    - name: Task 19 - Alert if there is difference between services running before and after patching
+      local_action: command python3 alert_notification.py alert_servcies "{{ ansible_host }}" "{{ verify_services.msg }}"
+
+    - name: Task 20 - Create CSV using Python script
+      local_action: command python3 generate_win_csv.py "{{ date_time.stdout }}{{ patch_json_file }}"
+
+    - name: Task 21 - Delete temp json files
+      file:
+        path: "{{ date_time.stdout }}{{ item }}"
+        state: absent
+      with_items: "{{ temp_json_files }}"
+      delegate_to: localhost
