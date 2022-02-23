@@ -1,7 +1,7 @@
 # Ansible Project
 Update Invetory with your host machines IP address and Credentials
 
-Use ansible-vault to encrypt password for invemtory:
+Use ansible-vault to encrypt password for inventory:
 * Command for encrypting password: ansible-vault encrypt_string 'Your String/Password' --ask-vault-pass
 
 Command to run Playbooks:
