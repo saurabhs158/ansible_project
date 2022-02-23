@@ -1,0 +1,26 @@
+---
+- name: Delete local User in Windows
+  hosts: win
+  gather_facts: yes
+  ignore_errors: yes
+  ignore_unreachable: yes
+  become: yes
+
+  vars:
+    user_json_file: "{{ ansible_date_time.date }}_{{ ansible_date_time.time }}_output_win_user_delete.json"
+
+  tasks:
+    - name: Task 1 - Delete local user
+      win_user:
+        name: local_abc1
+        state: absent
+      register: user_output
+
+    - name: Task 2 - Store User creation output to log file
+      copy:
+        dest: "{{ user_json_file }}"
+        content: |
+          {% for host in groups.win %}
+          { 'ip': '{{ ansible_host }}', 'server_name': '{{ host }}', 'os_distribution': '{{ ansible_os }}', 'data' : {{hostvars[host].user_output}} }
+          {% endfor %}
+      delegate_to: localhost
