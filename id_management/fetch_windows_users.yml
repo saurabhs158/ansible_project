@@ -1,0 +1,35 @@
+---
+- name: Fetch User in Windows
+  hosts: win
+  gather_facts: yes
+  ignore_errors: yes
+  ignore_unreachable: yes
+
+  tasks:
+
+    - name: Get current date time for log files
+      command: date "+%Y-%m-%d_%H:%M:%S"
+      register: date_time
+      delegate_to: localhost
+
+    - name: Copy script on host
+      win_copy:
+         src: /etc/ansible/id_management/Ansible_User_Audit.ps1
+         dest: C:\Windows\Temp\Ansible_User_Audit.ps1
+      register: copy_output
+
+    - name: run user audit script to get user list
+      win_shell: C:\Windows\Temp\Ansible_User_Audit.ps1
+      register: user_output
+
+    - name: Task - Store patching output to log file
+      copy:
+        dest: "{{ date_time.stdout }}_user_audit.json"
+        content: |
+          {% for host in groups.win %}
+          { 'ip': '{{ hostvars[host].ansible_host }}', 'server_name': '{{ host }}', 'os_distribution': '{{ hostvars[host].ansible_os }}', 'data' : {{hostvars[host].user_output}} }
+          {% endfor %}
+      delegate_to: localhost
+
+    - name: Create CSV report using log file
+      local_action: command python3 generete_user_audit_csv.py "{{ date_time.stdout }}_user_audit.json"
