@@ -34,7 +34,7 @@
       register: pre_service_check
 
     - name: Task 2 - Alert if server is not reachable or failed to connect using SSH
-      local_action: command python3 /etc/ansible/alert_notification.py alert_connection {{ ansible_host }} {{ app_process_check.msg }}
+      local_action: command python3 alert_notification.py alert_connection {{ ansible_host }} {{ app_process_check.msg }}
       when: "'unreachable' in app_process_check"
 
     - name:  Task 4 - upgrade kernel package on Ubuntu server
