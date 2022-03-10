@@ -5,7 +5,6 @@
   ignore_errors: true
   ignore_unreachable: true
   gather_facts: yes
-  serial: 4
   vars: 
     patch_json_file: "_output_linux_patch.json"
   tasks:
@@ -83,7 +82,7 @@
           state=started
 
     - name: Task 11 - Generate Linux patch CSV report
-      local_action: command python3 generate_linux_csv.py {{ patch_json_file }}
+      local_action: command python3 generate_linux_csv.py {{ date_time.stduout }}{{ patch_json_file }}
 
     - name:  Task 12 - verify web/database processes are not running
       shell: systemctl list-unit-files | grep enabled | awk '{print $1}'
