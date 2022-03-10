@@ -79,6 +79,7 @@ for server in servers:
         msg = "Server " + server_name + "is unreachable. Patching failed. Error message:" + res["data"]["msg"]
         csv_row = [server_name, server_ip, server_os, package_name, status, current_date, comment]
         row.append(csv_row)
+        
     elif res["data"]["failed"]:
         server_name = res["server_name"]
         server_ip = res["ip"]
@@ -91,6 +92,18 @@ for server in servers:
         csv_row = [server_name, server_ip, server_os, package_name, status, current_date, comment]
         row.append(csv_row)
         email_send_patching_failed(server_ip, msg)
+        
+    elif res["data"]["stdout"] == 'No Updates':
+        server_name = res["server_name"]
+        server_ip = res["ip"]
+        server_os = res["os_distribution"]
+        package_name = "-"
+        status = "-"
+        comment = "No Updates Available"
+
+        csv_row = [server_name, server_ip, server_os, package_name, status, current_date, comment]
+        row.append(csv_row)
+
     else:
         packages = res["data"]["stdout_lines"]
         if packages:
