@@ -25,7 +25,7 @@
       delegate_to: localhost
 
     - name: Get update date
-      command: date "+%b"
+      command: date "+%d %b %Y"
       register: update_date
       delegate_to: localhost
 
@@ -43,7 +43,7 @@
     
     - name: Task 5 - Get list of packages installed
 #      shell: rpm -qa --last | grep -e {{ date_year.stdout }} | grep -e {{ date_month.stdout}} | grep -e 'Tue 22'
-      shell: rpm -qa --last | grep -e '{{ update_date.stdout }}'
+      shell: rpm -qa --last | grep -e '{{ update_date.stdout }}' || echo No Updates 
       register: packages
 
     - name: Task 6 - Store patching output to log file
